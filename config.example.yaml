@@ -1,0 +1,50 @@
+# Screen Time Saver — example configuration
+# Copy this file to config.yaml and customise it.
+
+# Your Anthropic API key (or use an environment variable).
+anthropic_api_key: "${ANTHROPIC_API_KEY}"
+
+# ── Content sources ──────────────────────────────────────────────
+sources:
+  # YouTube channels — transcripts are extracted automatically.
+  - name: "3Blue1Brown"
+    platform: youtube
+    channel_url: "https://www.youtube.com/@3blue1brown"
+    max_items: 3
+
+  - name: "Fireship"
+    platform: youtube
+    channel_url: "https://www.youtube.com/@Fireship"
+    max_items: 5
+
+  # RSS feeds — works with any blog, news site, or podcast feed.
+  - name: "TechCrunch"
+    platform: rss
+    feed_url: "https://techcrunch.com/feed/"
+    max_items: 10
+
+  - name: "Hacker News – Best"
+    platform: rss
+    feed_url: "https://hnrss.org/best"
+    max_items: 10
+
+  # Twitter / X — uses Nitter RSS (public profiles only).
+  - name: "Elon Musk"
+    platform: twitter
+    handle: "elonmusk"
+    max_items: 5
+
+# ── Output settings ──────────────────────────────────────────────
+output:
+  directory: "./output"
+  audio_format: "mp3"
+  # Run `screen-time-saver list-voices` to see all available voices.
+  voice: "en-US-AndrewMultilingualNeural"
+  speech_rate: "+10%"          # slightly faster for a digest feel
+  max_audio_minutes: 10
+
+# ── Summariser settings ──────────────────────────────────────────
+summarizer:
+  model: "claude-sonnet-4-20250514"
+  max_tokens: 4096
+  style: "podcast"             # podcast | newsletter | briefing
