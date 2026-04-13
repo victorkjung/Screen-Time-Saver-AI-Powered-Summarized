@@ -35,6 +35,7 @@ async def _run_generate(
     output_dir: Optional[str],
     no_audio: bool,
     style: Optional[str],
+    deliver: bool,
     verbose: bool,
 ) -> None:
     _setup_logging(verbose)
@@ -83,14 +84,17 @@ async def _run_generate(
     from screen_time_saver.models import TimestampedSegment
 
     segments: list[TimestampedSegment] = []
+    generated_audio_path: Path | None = None
     if no_audio:
         typer.echo("Skipping audio generation (--no-audio).")
     else:
         from screen_time_saver.audio import generate_audio
 
         typer.echo("Generating audio…")
-        audio_path, segments = await generate_audio(digest.full_script, cfg.output)
-        typer.echo(f"Audio saved to {audio_path}")
+        generated_audio_path, segments = await generate_audio(
+            digest.full_script, cfg.output
+        )
+        typer.echo(f"Audio saved to {generated_audio_path}")
 
     # 5. Write output files.
     from screen_time_saver.output import (
@@ -108,6 +112,15 @@ async def _run_generate(
 
     notes_path = generate_show_notes(digest, out / "show_notes.md")
     typer.echo(f"Show notes saved to {notes_path}")
+
+    # 6. Deliver via Twilio / Telegram (if enabled).
+    if deliver and cfg.delivery:
+        from screen_time_saver.delivery import deliver_digest
+
+        typer.echo("\nDelivering digest…")
+        statuses = await deliver_digest(digest, generated_audio_path, cfg.delivery)
+        for status in statuses:
+            typer.echo(f"  {status}")
 
     typer.echo("\nDone!  Your screen-time-saving digest is ready.")
 
@@ -137,10 +150,16 @@ def generate(
         "-s",
         help="Override summarisation style: podcast, newsletter, or briefing.",
     ),
+    deliver: bool = typer.Option(
+        False,
+        "--deliver",
+        "-d",
+        help="Send the digest via configured delivery backends (Twilio, Telegram).",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose logging."),
 ) -> None:
     """Fetch, summarise, and narrate your social media feeds."""
-    asyncio.run(_run_generate(config, output_dir, no_audio, style, verbose))
+    asyncio.run(_run_generate(config, output_dir, no_audio, style, deliver, verbose))
 
 
 # ── list-voices ───────────────────────────────────────────────────

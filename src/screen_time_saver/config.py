@@ -49,6 +49,33 @@ class SummarizerConfig(BaseModel):
     style: Literal["podcast", "newsletter", "briefing"] = "podcast"
 
 
+class TwilioConfig(BaseModel):
+    """Twilio outbound-call delivery settings."""
+
+    enabled: bool = False
+    account_sid: str = ""
+    auth_token: str = ""
+    from_phone: str = ""  # Your Twilio phone number, e.g. "+15551234567"
+    to_phone: str = ""  # Destination phone number
+    audio_base_url: str | None = None  # Public URL prefix for the MP3
+    local_server_port: int = 8765  # Fallback local file server port
+
+
+class TelegramConfig(BaseModel):
+    """Telegram bot delivery settings."""
+
+    enabled: bool = False
+    bot_token: str = ""  # From @BotFather
+    chat_id: str = ""  # Target chat/channel ID
+
+
+class DeliveryConfig(BaseModel):
+    """Delivery backends — how the digest reaches you."""
+
+    twilio: TwilioConfig | None = None
+    telegram: TelegramConfig | None = None
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration."""
 
@@ -56,6 +83,7 @@ class AppConfig(BaseModel):
     sources: list[SourceConfig]
     output: OutputConfig = OutputConfig()
     summarizer: SummarizerConfig = SummarizerConfig()
+    delivery: DeliveryConfig = DeliveryConfig()
 
 
 def load_config(path: Path) -> AppConfig:
@@ -66,9 +94,18 @@ def load_config(path: Path) -> AppConfig:
     with open(path) as fh:
         raw = yaml.safe_load(fh)
 
-    # Environment-variable interpolation for the API key.
+    # Environment-variable interpolation for secrets.
     key = raw.get("anthropic_api_key", "")
     if isinstance(key, str):
         raw["anthropic_api_key"] = os.path.expandvars(key)
+
+    # Expand env vars in delivery config secrets.
+    delivery = raw.get("delivery") or {}
+    for backend in ("twilio", "telegram"):
+        section = delivery.get(backend) or {}
+        for field in ("account_sid", "auth_token", "bot_token"):
+            val = section.get(field, "")
+            if isinstance(val, str):
+                section[field] = os.path.expandvars(val)
 
     return AppConfig(**raw)

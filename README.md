@@ -25,6 +25,9 @@ edge-tts audio         (free, high-quality text-to-speech)
     |
     v
 Output files           (MP3 + SRT captions + transcript + show notes)
+    |
+    v
+Deliver (optional)     (Twilio phone call or Telegram audio message)
 ```
 
 ## Quick start
@@ -59,6 +62,9 @@ screen-time-saver generate --style briefing
 
 # Validate your config without running
 screen-time-saver validate
+
+# Generate and deliver via Twilio call + Telegram
+screen-time-saver generate --deliver
 
 # List available TTS voices
 screen-time-saver list-voices
@@ -95,6 +101,48 @@ All files are written to the configured `output.directory` (default: `./output/`
 | `transcript.txt` | Timestamped plain-text transcript |
 | `show_notes.md` | Markdown show notes with source links |
 
+## Delivery backends
+
+Get your digest pushed to you instead of pulling it.
+
+### Twilio — phone call
+
+Your digest calls *you*. Twilio places an outbound call to your phone and plays the MP3 audio.
+
+```bash
+pip install -e ".[twilio]"
+```
+
+**Setup:**
+1. Get a [Twilio account](https://www.twilio.com/) + phone number
+2. Set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` as environment variables
+3. Host the MP3 somewhere Twilio can reach (S3, ngrok, or any public URL)
+4. Enable in `config.yaml` under `delivery.twilio`
+
+### Telegram — audio message
+
+Receive the digest as a playable audio message in any Telegram chat or channel.
+
+**Setup:**
+1. Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
+2. Get your chat ID via [@userinfobot](https://t.me/userinfobot)
+3. Set `TELEGRAM_BOT_TOKEN` as an environment variable
+4. Enable in `config.yaml` under `delivery.telegram`
+
+No extra pip install needed — Telegram delivery uses `aiohttp` (already a dependency).
+
+## Claude Code skills
+
+If you use [Claude Code](https://docs.anthropic.com/en/docs/claude-code), this project includes custom slash commands:
+
+| Command | What it does |
+|---------|-------------|
+| `/digest` | Generate a full digest (with options for style, audio, delivery) |
+| `/add-source` | Add a new YouTube/RSS/Twitter source to your config |
+| `/setup-delivery` | Interactive Twilio or Telegram delivery setup |
+
+These live in `.claude/commands/` and work automatically when Claude Code is run from the project root.
+
 ## Use cases
 
 - **Doctor-ordered screen time reduction**: Get the essence of your feed without opening any apps
@@ -111,6 +159,8 @@ All files are written to the configured `output.directory` (default: `./output/`
 - **[feedparser](https://github.com/kurtmckee/feedparser)** — RSS/Atom feed parsing
 - **[Typer](https://typer.tiangolo.com/)** — CLI framework
 - **[Pydantic](https://docs.pydantic.dev/)** — configuration validation
+- **[Twilio](https://www.twilio.com/docs/voice)** — outbound phone calls (optional)
+- **Telegram Bot API** — audio message delivery via aiohttp (no extra SDK)
 
 ## License
 

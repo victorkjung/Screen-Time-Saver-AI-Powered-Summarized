@@ -48,3 +48,24 @@ summarizer:
   model: "claude-sonnet-4-20250514"
   max_tokens: 4096
   style: "podcast"             # podcast | newsletter | briefing
+
+# ── Delivery — how the digest reaches you ────────────────────────
+# Enable one or both backends. Disabled by default.
+delivery:
+  # Twilio — receive your digest as a phone call.
+  twilio:
+    enabled: false
+    account_sid: "${TWILIO_ACCOUNT_SID}"
+    auth_token: "${TWILIO_AUTH_TOKEN}"
+    from_phone: "+15551234567"       # your Twilio number
+    to_phone: "+15559876543"         # your personal number
+    # Public URL where Twilio can fetch the MP3.
+    # Use an S3 bucket, ngrok tunnel, or any static host.
+    audio_base_url: "https://your-host.example.com/audio"
+    local_server_port: 8765          # fallback local file server
+
+  # Telegram — receive the digest as an audio message in a chat.
+  telegram:
+    enabled: false
+    bot_token: "${TELEGRAM_BOT_TOKEN}"   # from @BotFather
+    chat_id: "123456789"                 # your chat or channel ID
