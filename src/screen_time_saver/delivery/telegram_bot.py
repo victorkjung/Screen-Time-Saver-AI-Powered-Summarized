@@ -17,6 +17,7 @@ from screen_time_saver.models import Digest
 log = logging.getLogger(__name__)
 
 _API = "https://api.telegram.org"
+_HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
 
 
 def _escape_markdown(text: str) -> str:
@@ -40,7 +41,7 @@ async def deliver_via_telegram(
     """
     base = f"{_API}/bot{config.bot_token}"
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=_HTTP_TIMEOUT) as session:
         # 1. Send a text summary.
         caption_lines = [f"*{_escape_markdown(digest.title)}*", ""]
         for section in digest.sections[:8]:
@@ -48,15 +49,16 @@ async def deliver_via_telegram(
         caption_lines.append(f"\n_{digest.estimated_read_minutes:.0f} min listen_")
         caption_text = "\n".join(caption_lines)
 
-        text_resp = await session.post(
+        async with session.post(
             f"{base}/sendMessage",
             json={
                 "chat_id": config.chat_id,
                 "text": caption_text,
                 "parse_mode": "MarkdownV2",
             },
-        )
-        text_result = await text_resp.json()
+        ) as text_resp:
+            text_resp.raise_for_status()
+            text_result = await text_resp.json()
         if not text_result.get("ok"):
             log.error("Telegram sendMessage failed: %s", text_result)
             return f"Telegram: FAILED to send text summary -> chat {config.chat_id}"
@@ -67,15 +69,16 @@ async def deliver_via_telegram(
             data.add_field("chat_id", str(config.chat_id))
             data.add_field("title", digest.title)
             data.add_field("performer", "Screen Time Saver")
-            data.add_field(
-                "audio",
-                audio_path.open("rb"),
-                filename=audio_path.name,
-                content_type="audio/mpeg",
-            )
-
-            resp = await session.post(f"{base}/sendAudio", data=data)
-            result = await resp.json()
+            with audio_path.open("rb") as audio_file:
+                data.add_field(
+                    "audio",
+                    audio_file,
+                    filename=audio_path.name,
+                    content_type="audio/mpeg",
+                )
+                async with session.post(f"{base}/sendAudio", data=data) as resp:
+                    resp.raise_for_status()
+                    result = await resp.json()
 
             if not result.get("ok"):
                 log.error("Telegram sendAudio failed: %s", result)

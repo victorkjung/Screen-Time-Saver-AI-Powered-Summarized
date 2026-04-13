@@ -22,6 +22,7 @@ _QUIET_OPTS: dict = {
     "no_warnings": True,
     "extract_flat": True,  # fast listing without full download
 }
+_HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
 
 
 def _list_recent_videos(channel_url: str, max_items: int) -> list[dict]:
@@ -48,7 +49,7 @@ def _get_video_info(url: str) -> dict:
 
 async def _fetch_subtitle_text(sub_url: str) -> str:
     """Download a json3 subtitle file and return plain text."""
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=_HTTP_TIMEOUT) as session:
         async with session.get(sub_url) as resp:
             if resp.status != 200:
                 return ""
