@@ -48,46 +48,47 @@ Edit `config.yaml`:
 - Set your `anthropic_api_key` (or export `ANTHROPIC_API_KEY` as an env var)
 - Add the YouTube channels, RSS feeds, and Twitter accounts you follow
 
-### 3. Run
+### 3. Validate your config
 
 ```bash
-python app.py
+screen-time-saver validate
 ```
 
-That's it. The app walks you through everything:
+Expected output:
 
 ```
-  [1/4]  Fetching content from your sources...
-    3Blue1Brown                     3 items
-    Fireship                        5 items
-    TechCrunch                      10 items
+Configuration is valid.
 
-  [2/4]  Summarising with Claude AI...
-    "Tech Moves Fast So You Don't Have To"
-    ~8 minute read
-
-  [3/4]  Generating podcast audio...
-    Audio:      output/digest.mp3
-    Captions:   output/captions.srt
-    Transcript: output/transcript.txt
-    Show notes: output/show_notes.md
-
-  [4/4]  Delivery: not configured (edit config.yaml to enable)
-
-  ========================================
-  All done!  Your digest is in ./output/
-  Listen:  open output/digest.mp3
-  ========================================
+  API key: ********…abc1
+  Sources: 5
+    - 3Blue1Brown (youtube, max 3 items)
+    - Fireship (youtube, max 5 items)
+    - TechCrunch (rss, max 10 items)
+    - Hacker News – Best (rss, max 10 items)
+    - Elon Musk (twitter, max 5 items)
+  Model:   claude-sonnet-4-20250514
+  Style:   podcast
+  Voice:   en-US-AndrewMultilingualNeural
+  Output:  ./output
 ```
 
-If anything is missing (no config file, no API key), `app.py` tells you exactly what to do — no cryptic error messages.
-
-### Advanced CLI
-
-For more control, you can also use the full CLI:
+### 4. Generate your digest
 
 ```bash
-# Text-only (skip audio generation)
+# First run — text only (skips TTS, fastest way to verify everything works)
+screen-time-saver generate --no-audio
+
+# Full run — generates podcast MP3 + captions + transcript + show notes
+screen-time-saver generate
+```
+
+### All CLI commands
+
+```bash
+# Generate a full podcast-style audio digest
+screen-time-saver generate
+
+# Text-only (skip audio — good for first-time smoke test)
 screen-time-saver generate --no-audio
 
 # Use a different summarisation style
@@ -96,11 +97,18 @@ screen-time-saver generate --style briefing
 # Generate and deliver via Twilio call + Telegram
 screen-time-saver generate --deliver
 
-# Validate your config without running
+# Validate your config without running anything
 screen-time-saver validate
 
 # List available TTS voices
 screen-time-saver list-voices
+```
+
+You can also run the CLI directly with Python if you prefer:
+
+```bash
+python -m screen_time_saver.cli validate
+python -m screen_time_saver.cli generate --no-audio
 ```
 
 ## Configuration

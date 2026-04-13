@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-Screen Time Saver — one-click launcher.
+Screen Time Saver — optional convenience launcher.
 
-    python app.py
+This is an alternative way to run the full pipeline without remembering
+CLI flags.  The primary (and recommended) entry point is the installed CLI:
 
-That's it. No flags to memorise, no CLI incantations.
-It reads config.yaml, fetches your feeds, summarises with Claude,
-generates the audio podcast, and (if configured) delivers it to
-your phone or Telegram.
+    pip install -e .
+    cp config.example.yaml config.yaml
+    screen-time-saver validate
+    screen-time-saver generate
 
-First-time setup:
-    1. cp config.example.yaml config.yaml
-    2. Add your ANTHROPIC_API_KEY (or export it)
-    3. Pick your sources (YouTube channels, RSS feeds, Twitter handles)
-    4. python app.py
+This file does the same thing as `screen-time-saver generate` but with
+friendlier pre-flight checks and step-by-step progress output.  Use it
+if you prefer `python app.py` over the CLI.
 """
 
 import asyncio
@@ -42,7 +41,8 @@ def main() -> None:
         print("    1. cp config.example.yaml config.yaml")
         print("    2. Open config.yaml and set your ANTHROPIC_API_KEY")
         print("    3. Pick the YouTube channels / RSS feeds / Twitter accounts you follow")
-        print("    4. Run this again:  python app.py")
+        print("    4. screen-time-saver validate")
+        print("    5. screen-time-saver generate")
         print()
         sys.exit(1)
 
