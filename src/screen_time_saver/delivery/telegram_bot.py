@@ -19,6 +19,12 @@ log = logging.getLogger(__name__)
 _API = "https://api.telegram.org"
 
 
+def _escape_markdown(text: str) -> str:
+    for ch in ("_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"):
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 async def deliver_via_telegram(
     digest: Digest,
     audio_path: Path | None,
@@ -36,20 +42,24 @@ async def deliver_via_telegram(
 
     async with aiohttp.ClientSession() as session:
         # 1. Send a text summary.
-        caption_lines = [f"*{digest.title}*", ""]
-        for section in digest.sections[:8]:  # Telegram caption limit ~1024 chars
-            caption_lines.append(f"- {section.headline}")
+        caption_lines = [f"*{_escape_markdown(digest.title)}*", ""]
+        for section in digest.sections[:8]:
+            caption_lines.append(f"- {_escape_markdown(section.headline)}")
         caption_lines.append(f"\n_{digest.estimated_read_minutes:.0f} min listen_")
         caption_text = "\n".join(caption_lines)
 
-        await session.post(
+        text_resp = await session.post(
             f"{base}/sendMessage",
             json={
                 "chat_id": config.chat_id,
                 "text": caption_text,
-                "parse_mode": "Markdown",
+                "parse_mode": "MarkdownV2",
             },
         )
+        text_result = await text_resp.json()
+        if not text_result.get("ok"):
+            log.error("Telegram sendMessage failed: %s", text_result)
+            return f"Telegram: FAILED to send text summary -> chat {config.chat_id}"
 
         # 2. Send the audio file (if available).
         if audio_path and audio_path.exists():
@@ -69,7 +79,7 @@ async def deliver_via_telegram(
 
             if not result.get("ok"):
                 log.error("Telegram sendAudio failed: %s", result)
-                return f"Telegram: text sent, audio FAILED → chat {config.chat_id}"
+                return f"Telegram: text sent, audio FAILED -> chat {config.chat_id}"
 
             log.info("Audio sent to Telegram chat %s", config.chat_id)
             return f"Telegram: digest + audio sent to chat {config.chat_id}"

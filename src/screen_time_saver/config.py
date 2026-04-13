@@ -92,7 +92,7 @@ def load_config(path: Path) -> AppConfig:
     Supports ``${ENV_VAR}`` interpolation in the ``anthropic_api_key`` field.
     """
     with open(path) as fh:
-        raw = yaml.safe_load(fh)
+        raw = yaml.safe_load(fh) or {}
 
     # Environment-variable interpolation for secrets.
     key = raw.get("anthropic_api_key", "")
