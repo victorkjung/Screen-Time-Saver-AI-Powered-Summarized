@@ -12,6 +12,13 @@ import logging
 from datetime import datetime
 
 import anthropic
+import os
+
+try:
+    import openai as _openai_mod
+    _HAS_OPENAI = True
+except ImportError:
+    _HAS_OPENAI = False
 
 from screen_time_saver.config import SummarizerConfig
 from screen_time_saver.models import ContentItem, Digest, DigestSection
@@ -165,15 +172,31 @@ async def summarize_content(
         config.model,
     )
 
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model=config.model,
-        max_tokens=config.max_tokens,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
-    )
+    # Use OpenAI if model starts with "gpt" or "o", otherwise Anthropic.
+    _use_openai = config.model.startswith(("gpt", "o1", "o3", "o4"))
 
-    raw_text = message.content[0].text
+    if _use_openai and _HAS_OPENAI:
+        oai_key = os.environ.get("OPENAI_API_KEY", "")
+        oai_client = _openai_mod.OpenAI(api_key=oai_key)
+        log.info("Using OpenAI model: %s", config.model)
+        oai_resp = oai_client.chat.completions.create(
+            model=config.model,
+            max_tokens=config.max_tokens,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        )
+        raw_text = oai_resp.choices[0].message.content
+    else:
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=config.model,
+            max_tokens=config.max_tokens,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}],
+        )
+        raw_text = message.content[0].text
 
     # Strip markdown code fences if the model wrapped them.
     cleaned = raw_text.strip()
