@@ -1,14 +1,16 @@
-"""YouTube fetcher — uses yt-dlp to list channel videos and extract transcripts."""
+"""YouTube fetcher — yt-dlp for listing, youtube-transcript-api for transcripts."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import os
+import re
 from datetime import datetime, timezone
 
-import aiohttp
 import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 from screen_time_saver.config import SourceConfig
 from screen_time_saver.fetchers.base import BaseFetcher
@@ -16,13 +18,39 @@ from screen_time_saver.models import ContentItem
 
 log = logging.getLogger(__name__)
 
-# yt-dlp options shared across calls.
+# yt-dlp options for fast channel listing (no downloads, no subtitles).
 _QUIET_OPTS: dict = {
     "quiet": True,
     "no_warnings": True,
-    "extract_flat": True,  # fast listing without full download
+    "extract_flat": True,
 }
-_HTTP_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10, sock_read=20)
+
+
+def _build_transcript_api() -> YouTubeTranscriptApi:
+    """Build a YouTubeTranscriptApi instance, optionally with a SOCKS proxy.
+
+    Set YOUTUBE_PROXY_URL (e.g. ``socks5://100.126.103.83:1080``) to route
+    transcript requests through a residential IP.
+    """
+    proxy_url = os.environ.get("YOUTUBE_PROXY_URL")
+    if proxy_url:
+        log.info("Using YouTube transcript proxy: %s", proxy_url)
+        proxy = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
+        return YouTubeTranscriptApi(proxy_config=proxy)
+    return YouTubeTranscriptApi()
+
+
+def _extract_video_id(url: str) -> str | None:
+    """Extract a YouTube video ID from various URL formats."""
+    patterns = [
+        r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})",
+        r"^([a-zA-Z0-9_-]{11})$",
+    ]
+    for pat in patterns:
+        m = re.search(pat, url)
+        if m:
+            return m.group(1)
+    return None
 
 
 def _list_recent_videos(channel_url: str, max_items: int) -> list[dict]:
@@ -33,49 +61,28 @@ def _list_recent_videos(channel_url: str, max_items: int) -> list[dict]:
     return list((info.get("entries") or [])[:max_items])
 
 
-def _get_video_info(url: str) -> dict:
-    """Return full metadata (including subtitle URLs) for a single video."""
+def _get_video_info(url: str) -> dict | None:
+    """Return metadata for a single video. Returns None on failure."""
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-        "subtitleslangs": ["en"],
         "skip_download": True,
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        return ydl.extract_info(url, download=False) or {}
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False) or {}
+    except Exception:
+        return None
 
 
-async def _fetch_subtitle_text(sub_url: str) -> str:
-    """Download a json3 subtitle file and return plain text."""
-    async with aiohttp.ClientSession(timeout=_HTTP_TIMEOUT) as session:
-        async with session.get(sub_url) as resp:
-            if resp.status != 200:
-                return ""
-            data = json.loads(await resp.text())
-
-    # json3 format: {"events": [{"segs": [{"utf8": "..."}]}]}
-    parts: list[str] = []
-    for event in data.get("events", []):
-        for seg in event.get("segs", []):
-            parts.append(seg.get("utf8", ""))
-    return " ".join(parts).strip()
-
-
-def _best_sub_url(info: dict) -> str | None:
-    """Pick the best English subtitle URL (manual > auto, json3 preferred)."""
-    for key in ("subtitles", "automatic_captions"):
-        subs = info.get(key, {})
-        for lang in ("en", "en-US", "en-GB"):
-            formats = subs.get(lang, [])
-            for fmt in formats:
-                if fmt.get("ext") == "json3":
-                    return fmt["url"]
-            # Fall back to first available format.
-            if formats:
-                return formats[0].get("url")
-    return None
+def _fetch_transcript(ytt: YouTubeTranscriptApi, video_id: str) -> str:
+    """Fetch transcript text via youtube-transcript-api. Returns empty on failure."""
+    try:
+        transcript = ytt.fetch(video_id)
+        return " ".join(snippet.text for snippet in transcript)
+    except Exception:
+        log.warning("Transcript unavailable for %s", video_id, exc_info=True)
+        return ""
 
 
 class YouTubeFetcher(BaseFetcher):
@@ -83,8 +90,9 @@ class YouTubeFetcher(BaseFetcher):
 
     async def fetch(self, source: SourceConfig) -> list[ContentItem]:
         loop = asyncio.get_event_loop()
+        ytt = _build_transcript_api()
 
-        # Step 1 — list recent videos (CPU-bound yt-dlp call).
+        # Step 1 — list recent videos (yt-dlp flat listing, works from any IP).
         entries = await loop.run_in_executor(
             None, _list_recent_videos, source.channel_url, source.max_items
         )
@@ -95,41 +103,46 @@ class YouTubeFetcher(BaseFetcher):
             if not video_url:
                 continue
 
-            # Step 2 — get full info for each video.
-            try:
-                info = await loop.run_in_executor(None, _get_video_info, video_url)
-            except Exception:
-                log.warning("Failed to fetch info for %s", video_url, exc_info=True)
-                continue
+            video_id = _extract_video_id(video_url)
 
-            # Step 3 — extract transcript text.
+            # Step 2 — try full metadata via yt-dlp (may fail on datacenter IPs).
+            info = await loop.run_in_executor(None, _get_video_info, video_url)
+            if info is None:
+                log.info("yt-dlp metadata blocked for %s, using listing data", video_url)
+
+            # Step 3 — transcript via youtube-transcript-api (proxied).
             transcript = ""
-            sub_url = _best_sub_url(info)
-            if sub_url:
-                try:
-                    transcript = await _fetch_subtitle_text(sub_url)
-                except Exception:
-                    log.warning("Failed to fetch subs for %s", video_url, exc_info=True)
+            if video_id:
+                transcript = await loop.run_in_executor(
+                    None, _fetch_transcript, ytt, video_id
+                )
 
+            # Fall back to description from whichever source has it.
             if not transcript:
-                transcript = info.get("description", "")
+                transcript = (info or {}).get("description", "") or entry.get("description", "")
 
-            upload_date = info.get("upload_date")  # "YYYYMMDD"
+            # Build published date from info or entry.
+            upload_date = (info or {}).get("upload_date") or entry.get("upload_date")
             published = None
-            if upload_date and len(upload_date) == 8:
-                published = datetime.strptime(upload_date, "%Y%m%d").replace(
+            if upload_date and len(str(upload_date)) == 8:
+                published = datetime.strptime(str(upload_date), "%Y%m%d").replace(
                     tzinfo=timezone.utc
                 )
+
+            # Prefer info metadata, fall back to flat listing fields.
+            title = (info or {}).get("title") or entry.get("title", "(untitled)")
+            url = (info or {}).get("webpage_url") or video_url
+            duration = (info or {}).get("duration") or entry.get("duration")
 
             items.append(
                 ContentItem(
                     source_name=source.name,
                     platform="youtube",
-                    title=info.get("title", entry.get("title", "(untitled)")),
-                    url=info.get("webpage_url", video_url),
+                    title=title,
+                    url=url,
                     content_text=transcript,
                     published=published,
-                    duration_seconds=info.get("duration"),
+                    duration_seconds=duration,
                 )
             )
 

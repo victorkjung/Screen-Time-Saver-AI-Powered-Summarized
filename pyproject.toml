@@ -18,6 +18,8 @@ dependencies = [
     "typer[all]>=0.9.0",
     "pyyaml>=6.0",
     "aiohttp>=3.9.0",
+    "youtube-transcript-api>=1.2.0",
+    "requests[socks]>=2.31.0",
 ]
 
 [project.optional-dependencies]
