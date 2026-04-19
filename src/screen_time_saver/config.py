@@ -67,6 +67,7 @@ class TelegramConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""  # From @BotFather
     chat_id: str = ""  # Target chat/channel ID
+    message_thread_id: int | None = None  # Optional forum topic ID (supergroups with topics)
 
 
 class DeliveryConfig(BaseModel):

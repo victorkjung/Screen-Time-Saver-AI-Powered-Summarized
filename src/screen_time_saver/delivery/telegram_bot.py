@@ -95,11 +95,14 @@ async def deliver_via_telegram(
     async with aiohttp.ClientSession(timeout=_HTTP_TIMEOUT) as session:
         # 1. Send text summary.
         try:
+            text_payload: dict = {"chat_id": config.chat_id, "text": summary_text}
+            if config.message_thread_id is not None:
+                text_payload["message_thread_id"] = config.message_thread_id
             await _post_json(
                 session,
                 f"{base}/sendMessage",
                 "sendMessage",
-                {"chat_id": config.chat_id, "text": summary_text},
+                text_payload,
             )
         except Exception as exc:
             safe = _sanitize_error(exc, "sendMessage")
@@ -111,6 +114,8 @@ async def deliver_via_telegram(
             try:
                 data = aiohttp.FormData()
                 data.add_field("chat_id", str(config.chat_id))
+                if config.message_thread_id is not None:
+                    data.add_field("message_thread_id", str(config.message_thread_id))
                 data.add_field("title", digest.title)
                 data.add_field("performer", "Screen Time Saver")
                 with audio_path.open("rb") as audio_file:
