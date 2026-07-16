@@ -1,10 +1,9 @@
 name: CI
 
+# Deprecated repo (see DEPRECATED.md) — CI is manual-only so pushes don't
+# re-run tests or send failure emails. Trigger by hand if the repo is revived.
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
